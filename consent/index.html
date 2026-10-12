@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://esm.sh; connect-src https://aehdhnmgnncfogbhcdtg.supabase.co https://esm.sh; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<title>חורב יועצים | אישור גישה ל-HC Brain</title>
+<style>
+  body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#f4f6f9;color:#1b2a41}
+  .card{max-width:440px;margin:8vh auto;background:#fff;border-radius:10px;box-shadow:0 2px 14px rgba(0,0,0,.08);padding:32px}
+  h1{font-size:20px;margin:0 0 4px;color:#0b3d75}
+  .sub{color:#5b6b80;font-size:13px;margin-bottom:22px}
+  .box{background:#f4f6f9;border-radius:8px;padding:12px 14px;font-size:14px;margin:14px 0;line-height:1.6}
+  button{width:100%;padding:12px;border:0;border-radius:6px;font-size:15px;cursor:pointer;margin-top:10px}
+  .primary{background:#0b3d75;color:#fff}.ghost{background:#e8ecf2;color:#1b2a41}
+  .err{color:#a11;font-size:14px}.small{font-size:12px;color:#7a8799;margin-top:18px}
+  [hidden]{display:none}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>חורב יועצים | HC Brain</h1>
+  <div class="sub">אישור גישה למאגר הפוליסות והידע (קריאה בלבד)</div>
+  <div id="status">טוען...</div>
+  <div id="login" hidden>
+    <p>יש להתחבר עם חשבון Microsoft של חורב יועצים.</p>
+    <button class="primary" id="btnLogin">התחברות עם Microsoft</button>
+  </div>
+  <div id="consent" hidden>
+    <div class="box">
+      <div><b>אפליקציה:</b> <span id="client"></span></div>
+      <div><b>משתמש:</b> <span id="user"></span></div>
+      <div><b>הרשאה:</b> קריאה בלבד - פוליסות קבוצתיות ומאגר הידע. כל שאילתה נרשמת.</div>
+    </div>
+    <button class="primary" id="btnApprove">אישור</button>
+    <button class="ghost" id="btnDeny">דחייה</button>
+  </div>
+  <div class="small">המידע סודי ומיועד לשימוש מקצועי במסגרת ההתקשרות עם חורב יועצים בלבד.</div>
+</div>
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+const sb = createClient('https://aehdhnmgnncfogbhcdtg.supabase.co', 'sb_publishable_HwVFxNKn_5dUFgB0zlqtWg_FLv6k78N',
+  { auth: { flowType: 'pkce', detectSessionInUrl: true, persistSession: true, storage: window.sessionStorage } });
+const $ = (id) => document.getElementById(id);
+const show = (id) => { ['login','consent'].forEach(x => $(x).hidden = x !== id); };
+const fail = (m) => { $('status').innerHTML = '<span class="err"></span>'; $('status').firstChild.textContent = m; };
+const params = new URLSearchParams(location.search);
+let authId = params.get('authorization_id') || sessionStorage.getItem('hc_auth_id');
+if (params.get('authorization_id')) sessionStorage.setItem('hc_auth_id', authId);
+async function main() {
+  if (!authId) return fail('בקשת הגישה חסרה. יש להתחיל מחדש מתוך Claude.');
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) {
+    $('status').textContent = '';
+    show('login');
+    $('btnLogin').onclick = () => sb.auth.signInWithOAuth({
+      provider: 'azure',
+      options: { scopes: 'email', redirectTo: location.origin + location.pathname + '?authorization_id=' + encodeURIComponent(authId) }
+    });
+    return;
+  }
+  const { data, error } = await sb.auth.oauth.getAuthorizationDetails(authId);
+  if (error || !data) return fail('בקשה לא תקפה או שפג תוקפה: ' + (error?.message || ''));
+  if (!('authorization_id' in data) && data.redirect_url) { sessionStorage.removeItem('hc_auth_id'); return location.assign(data.redirect_url); }
+  $('status').textContent = '';
+  $('client').textContent = data.client?.name || data.client?.client_id || '';
+  $('user').textContent = session.user?.email || '';
+  show('consent');
+  const decide = async (approve) => {
+    $('btnApprove').disabled = $('btnDeny').disabled = true;
+    const r = approve ? await sb.auth.oauth.approveAuthorization(authId) : await sb.auth.oauth.denyAuthorization(authId);
+    sessionStorage.removeItem('hc_auth_id');
+    if (r.error) return fail(r.error.message);
+    location.assign(r.data.redirect_url);
+  };
+  $('btnApprove').onclick = () => decide(true);
+  $('btnDeny').onclick = () => decide(false);
+}
+main().catch(e => fail(String(e?.message || e)));
+</script>
+</body>
+</html>
