@@ -48,7 +48,9 @@ const fail = (m) => { $('status').innerHTML = '<span class="err"></span>'; $('st
 const params = new URLSearchParams(location.search);
 let authId = params.get('authorization_id') || sessionStorage.getItem('hc_auth_id');
 if (params.get('authorization_id')) sessionStorage.setItem('hc_auth_id', authId);
+const urlErr = new URLSearchParams(location.hash.slice(1)).get('error_description') || params.get('error_description');
 async function main() {
+  if (urlErr) { fail(/signup/i.test(urlErr) ? 'החשבון הזה אינו מורשה ל-HC Brain. יש להתחבר עם החשבון שהוגדר לך, או לפנות לאורי חורב.' : 'שגיאת התחברות: ' + urlErr); return; }
   if (!authId) return fail('בקשת הגישה חסרה. יש להתחיל מחדש מתוך Claude.');
   const { data: { session } } = await sb.auth.getSession();
   if (!session) {
